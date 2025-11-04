@@ -1,8 +1,10 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // 1. IMPORT useNavigate
 import { FaUser, FaLock, FaEnvelope, FaArrowRight } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
 
-const Signup = ({ onNavigate }) => {
+const Signup = () => { // 2. REMOVE onNavigate prop
+  const navigate = useNavigate(); // 3. INITIALIZE navigate
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -19,48 +21,48 @@ const Signup = ({ onNavigate }) => {
     setFormData(prev => ({ ...prev, [id]: value }));
   };
 
-  // In your Signup.jsx
   const handleSubmit = async (e) => {
-  e.preventDefault();
-  setIsLoading(true);
+    e.preventDefault();
+    setIsLoading(true);
 
-  try {
-    const response = await fetch('/.netlify/functions/auth', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'signup',
-        name: formData.name,
-        email: formData.email,
-        password: formData.password,
-        confirmPassword: formData.confirmPassword
-      }),
-    });
+    try {
+      const response = await fetch('/.netlify/functions/auth', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'signup',
+          name: formData.name,
+          email: formData.email,
+          password: formData.password,
+          confirmPassword: formData.confirmPassword
+        }),
+      });
 
-    // First check if response is OK
-    if (!response.ok) {
-      // Try to parse error response
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        throw new Error(`Server error: ${response.status}`);
+      // First check if response is OK
+      if (!response.ok) {
+        // Try to parse error response
+        let errorData;
+        try {
+          errorData = await response.json();
+        } catch (e) {
+          throw new Error(`Server error: ${response.status}`);
+        }
+        throw new Error(errorData.error || 'Signup failed');
       }
-      throw new Error(errorData.error || 'Signup failed');
-    }
 
-    // Process successful response
-    const data = await response.json();
-    localStorage.setItem('user', JSON.stringify(data.user));
-    onNavigate('dashboard');
-    
-  } catch (error) {
-    console.error('Signup error:', error);
-    alert(error.message);
-  } finally {
-    setIsLoading(false);
-  }
-};
+      // Process successful response
+      const data = await response.json();
+      localStorage.setItem('user', JSON.stringify(data.user));
+      localStorage.setItem('token', data.token); // 4. ADD this to log user in
+      navigate('/dashboard'); // 5. UPDATE navigation on success
+      
+    } catch (error) {
+      console.error('Signup error:', error);
+      alert(error.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <div className="w-full px-4 sm:px-6 md:px-8 lg:px-20 xl:px-24 mx-auto max-w-7xl">
@@ -170,7 +172,7 @@ const Signup = ({ onNavigate }) => {
             <p className="text-center text-gray-600 text-sm sm:text-base">
               Already have an account?{' '}
               <button
-                onClick={() => onNavigate('login')}
+                onClick={() => navigate('/login')} // 6. UPDATE "Sign in" link
                 className="font-medium text-indigo-600 hover:text-indigo-500"
               >
                 Sign in

@@ -1,40 +1,57 @@
-import { useState } from 'react';
+// D:\Github\networkdash\src\App.jsx
+// **** THIS IS THE UPDATED FILE ****
+
+import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import Login from './Components/Auth/Login';
 import Signup from './Components/Auth/Signup';
 import ForgotPassword from './Components/Auth/ForgotPassword';
+import ResetPassword from './Components/Auth/ResetPassword'; // <--- 1. IMPORT
 import Dashboard from './Components/Pages/Dashboard';
+import ProtectedRoute from './Components/ProtectedRoute';
+
+// This is the auth layout wrapper
+const AuthLayout = ({ children }) => (
+  <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+    {children}
+  </div>
+);
+
+// Define the application routes
+const router = createBrowserRouter([
+  {
+    path: "/login",
+    element: <AuthLayout><Login /></AuthLayout>,
+  },
+  {
+    path: "/signup",
+    element: <AuthLayout><Signup /></AuthLayout>,
+  },
+  {
+    path: "/forgot-password",
+    element: <AuthLayout><ForgotPassword /></AuthLayout>,
+  },
+  {
+    path: "/reset-password", // <--- 2. ADD THIS NEW ROUTE
+    element: <AuthLayout><ResetPassword /></AuthLayout>,
+  },
+  {
+    path: "/dashboard",
+    element: (
+      <ProtectedRoute>
+        <Dashboard />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // Default route: redirect to login
+    path: "/",
+    element: <Navigate to="/login" replace />,
+  }
+]);
 
 function App() {
-  const [currentView, setCurrentView] = useState('login');
-
-  const navigate = (view) => {
-    setCurrentView(view);
-  };
-
-  const renderContent = () => {
-    switch (currentView) {
-      case 'login':
-        return <Login onNavigate={navigate} />;
-      case 'signup':
-        return <Signup onNavigate={navigate} />;
-      case 'forgot-password':
-        return <ForgotPassword onNavigate={navigate} />;
-      case 'dashboard':
-        return <Dashboard onNavigate={navigate} />;
-      default:
-        return <Login onNavigate={navigate} />;
-    }
-  };
-
-  const backgroundClass = currentView !== 'dashboard' 
-    ? "min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4"
-    : "";
-
-  return (
-    <div className={backgroundClass}>
-      {renderContent()}
-    </div>
-  );
+  // The RouterProvider handles everything
+  return <RouterProvider router={router} />;
 }
 
 export default App;

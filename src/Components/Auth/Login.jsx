@@ -1,14 +1,15 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // 1. IMPORT useNavigate
 import { FaUser, FaLock, FaArrowRight, FaGithub, FaGoogle, FaTwitter } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
 
-const Login = ({ onNavigate }) => {
+const Login = () => { // 2. REMOVE onNavigate prop
+  const navigate = useNavigate(); // 3. INITIALIZE navigate
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // In your Login.jsx
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -31,7 +32,7 @@ const Login = ({ onNavigate }) => {
       // Store token and user data
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
-      onNavigate('dashboard');
+      navigate('/dashboard'); // 4. UPDATE navigation on success
     } catch (error) {
       alert(error.message);
     } finally {
@@ -89,7 +90,7 @@ const Login = ({ onNavigate }) => {
                 </div>
                 <button
                   type="button"
-                  onClick={() => onNavigate('forgot-password')}
+                  onClick={() => navigate('/forgot-password')} // 5. UPDATE "Forgot Password" link
                   className="font-medium text-indigo-600 hover:text-indigo-500"
                 >
                   Forgot password?
@@ -151,7 +152,7 @@ const Login = ({ onNavigate }) => {
             <p className="text-center text-gray-600 text-sm sm:text-base">
               Don't have an account?{' '}
               <button
-                onClick={() => onNavigate('signup')}
+                onClick={() => navigate('/signup')} // 6. UPDATE "Sign up" link
                 className="font-medium text-indigo-600 hover:text-indigo-500"
               >
                 Sign up

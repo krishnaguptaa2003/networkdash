@@ -1,8 +1,13 @@
+// D:\Github\networkdash\src\Components\Auth\ForgotPassword.jsx
+// **** THIS IS THE CORRECTED FILE ****
+
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom'; // <--- IMPORT useNavigate
 import { FaEnvelope, FaArrowLeft, FaCheck } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
 
-const ForgotPassword = ({ onNavigate }) => {
+const ForgotPassword = () => { // <--- REMOVE onNavigate
+  const navigate = useNavigate(); // <--- ADD this
   const [email, setEmail] = useState('');
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -20,9 +25,21 @@ const ForgotPassword = ({ onNavigate }) => {
     setError('');
 
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      setIsSubmitted(true);
+      // --- THIS IS THE NEW FETCH CALL ---
+      const response = await fetch('/.netlify/functions/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to send reset link');
+      }
+      // --- END OF NEW FETCH CALL ---
+
+      setIsSubmitted(true); // Show the "Check your email" message
     } catch (err) {
       setError(err.message || 'Failed to send reset link. Please try again.');
     } finally {
@@ -38,7 +55,7 @@ const ForgotPassword = ({ onNavigate }) => {
           
           <div className="px-6 py-6 sm:px-8 sm:py-6">
             <button
-              onClick={() => onNavigate('login')}
+              onClick={() => navigate('/login')} // <--- USE navigate
               className="flex items-center text-indigo-600 hover:text-indigo-500 mb-4 transition-colors text-sm sm:text-base"
             >
               <FaArrowLeft className="mr-2" /> Back to login
@@ -107,10 +124,7 @@ const ForgotPassword = ({ onNavigate }) => {
                   If you don't see the email, check your spam folder.
                 </p>
                 <button
-                  onClick={() => {
-                    setIsSubmitted(false);
-                    setEmail('');
-                  }}
+                  onClick={handleSubmit} // Resend email
                   className="text-indigo-600 hover:text-indigo-500 font-medium transition-colors text-sm sm:text-base"
                 >
                   Resend email
