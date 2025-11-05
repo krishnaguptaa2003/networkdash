@@ -1,3 +1,4 @@
+# D:\Github\networkdash\netlify.toml
 [[redirects]]
   from = "/*"
   to = "/index.html"

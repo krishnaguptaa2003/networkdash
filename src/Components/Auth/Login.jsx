@@ -1,14 +1,21 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. IMPORT useNavigate
+import { useNavigate } from 'react-router-dom';
 import { FaUser, FaLock, FaArrowRight, FaGithub, FaGoogle, FaTwitter } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
 
-const Login = () => { // 2. REMOVE onNavigate prop
-  const navigate = useNavigate(); // 3. INITIALIZE navigate
+const Login = () => {
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+
+  // --- THIS IS THE NEW SOCIAL LOGIN HANDLER ---
+  const handleSocialLogin = (provider) => {
+    // This function just redirects to our backend "login" function
+    // which will then redirect the user to Google, GitHub, or Twitter
+    window.location.href = `/.netlify/functions/oauth-login?provider=${provider}`;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,13 +33,11 @@ const Login = () => { // 2. REMOVE onNavigate prop
       });
 
       const data = await response.json();
-
       if (!response.ok) throw new Error(data.error || 'Login failed');
 
-      // Store token and user data
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
-      navigate('/dashboard'); // 4. UPDATE navigation on success
+      navigate('/dashboard');
     } catch (error) {
       alert(error.message);
     } finally {
@@ -53,6 +58,7 @@ const Login = () => { // 2. REMOVE onNavigate prop
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-4">
+              {/* --- Your existing email/password form --- */}
               <AuthFormInput
                 id="login-email"
                 label="Email"
@@ -63,7 +69,6 @@ const Login = () => { // 2. REMOVE onNavigate prop
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-
               <AuthFormInput
                 id="login-password"
                 label="Password"
@@ -76,7 +81,6 @@ const Login = () => { // 2. REMOVE onNavigate prop
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
-
               <div className="flex items-center justify-between text-sm sm:text-base">
                 <div className="flex items-center">
                   <input
@@ -90,13 +94,12 @@ const Login = () => { // 2. REMOVE onNavigate prop
                 </div>
                 <button
                   type="button"
-                  onClick={() => navigate('/forgot-password')} // 5. UPDATE "Forgot Password" link
+                  onClick={() => navigate('/forgot-password')}
                   className="font-medium text-indigo-600 hover:text-indigo-500"
                 >
                   Forgot password?
                 </button>
               </div>
-
               <button
                 type="submit"
                 disabled={isLoading}
@@ -114,6 +117,8 @@ const Login = () => { // 2. REMOVE onNavigate prop
                 )}
               </button>
             </form>
+            {/* --- END of email/password form --- */}
+
 
             <div className="mt-5">
               <div className="relative">
@@ -125,26 +130,32 @@ const Login = () => { // 2. REMOVE onNavigate prop
                 </div>
               </div>
 
+              {/* --- THIS IS THE UPDATED PART --- */}
               <div className="mt-5 grid grid-cols-3 gap-3">
                 <button
                   type="button"
+                  onClick={() => handleSocialLogin('google')}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all"
                 >
                   <FaGoogle className="text-red-500" />
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleSocialLogin('github')}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all"
                 >
                   <FaGithub className="text-gray-800" />
                 </button>
                 <button
                   type="button"
+                  onClick={() => handleSocialLogin('twitter')}
                   className="w-full inline-flex justify-center py-2 px-4 border border-gray-200 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all"
                 >
                   <FaTwitter className="text-blue-400" />
                 </button>
               </div>
+              {/* --- END OF UPDATED PART --- */}
+
             </div>
           </div>
 
@@ -152,7 +163,7 @@ const Login = () => { // 2. REMOVE onNavigate prop
             <p className="text-center text-gray-600 text-sm sm:text-base">
               Don't have an account?{' '}
               <button
-                onClick={() => navigate('/signup')} // 6. UPDATE "Sign up" link
+                onClick={() => navigate('/signup')}
                 className="font-medium text-indigo-600 hover:text-indigo-500"
               >
                 Sign up
