@@ -1,5 +1,5 @@
 // D:\Github\networkdash\netlify\functions\forgot-password.js
-// **** THIS IS THE CORRECTED FILE ****
+// **** THIS IS THE UPDATED FILE ****
 
 const { getClient } = require('./db');
 const bcrypt = require('bcryptjs');
@@ -17,7 +17,7 @@ const jsonResponse = (status, body) => ({
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: process.env.SMTP_PORT,
-  secure: process.env.SMTP_SECURE === 'true', // Use 'true' for 465, 'false' for 587
+  secure: process.env.SMTP_SECURE === 'true', 
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS
@@ -37,30 +37,26 @@ exports.handler = async (event) => {
         return jsonResponse(400, { error: 'Email is required' });
       }
 
-      // Check if user exists
       const { rows: users } = await client.query(
         'SELECT * FROM users WHERE email = $1',
         [email]
       );
 
       if (users.length === 0) {
-        // We send a 200 OK even if email not found
-        // This prevents attackers from guessing which emails are registered.
         return jsonResponse(200, { message: 'Reset email sent (if user exists)' });
       }
 
-      // Generate a secure token
       const resetToken = crypto.randomBytes(32).toString('hex');
-      // Set expiry for 1 hour from now
-      const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hour
+      
+      // --- 1. THIS IS THE FIRST CHANGE ---
+      // Set expiry for 30 minutes from now
+      const resetTokenExpiry = new Date(Date.now() + 1800000); // 30 minutes (was 3600000)
 
-      // Save token and expiry to the user's record
       await client.query(
         'UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE email = $3',
         [resetToken, resetTokenExpiry, email]
       );
 
-      // Create the reset link
       const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
       // Send the email
@@ -70,7 +66,9 @@ exports.handler = async (event) => {
         subject: 'Password Reset Instructions',
         html: `
           <p>You requested a password reset for your NetworkDash account.</p>
-          <p>Click this link to reset your password (it expires in 1 hour):</p>
+          
+          <p>Click this link to reset your password (it expires in 30 minutes):</p>
+          
           <p><a href="${resetLink}">Reset Password</a></p>
           <p>If you did not request this, please ignore this email.</p>
         `
@@ -87,7 +85,6 @@ exports.handler = async (event) => {
         return jsonResponse(400, { error: 'Token and new password are required' });
       }
 
-      // Find user by token AND check if token is expired
       const { rows: users } = await client.query(
         'SELECT * FROM users WHERE reset_token = $1 AND reset_token_expiry > NOW()',
         [token]
@@ -98,11 +95,10 @@ exports.handler = async (event) => {
       }
 
       const user = users[0];
-
-      // Hash the new password
       const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-      // Update password and clear the reset token fields
+      // --- THIS CODE MAKES IT ONE-TIME-USE ---
+      // By setting reset_token = NULL, the token is instantly invalidated.
       await client.query(
         'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2',
         [hashedPassword, user.id]
@@ -111,7 +107,6 @@ exports.handler = async (event) => {
       return jsonResponse(200, { message: 'Password updated successfully' });
     }
 
-    // --- 3. HANDLE OTHER METHODS ---
     return jsonResponse(405, { error: 'Method Not Allowed' });
 
   } catch (error) {
