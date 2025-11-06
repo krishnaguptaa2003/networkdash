@@ -5,7 +5,8 @@ import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import Login from './Components/Auth/Login';
 import Signup from './Components/Auth/Signup';
 import ForgotPassword from './Components/Auth/ForgotPassword';
-import ResetPassword from './Components/Auth/ResetPassword'; // <--- 1. IMPORT
+import ResetPassword from './Components/Auth/ResetPassword';
+import AuthCallback from './Components/Auth/AuthCallback';
 import Dashboard from './Components/Pages/Dashboard';
 import ProtectedRoute from './Components/ProtectedRoute';
 
@@ -31,8 +32,12 @@ const router = createBrowserRouter([
     element: <AuthLayout><ForgotPassword /></AuthLayout>,
   },
   {
-    path: "/reset-password", // <--- 2. ADD THIS NEW ROUTE
+    path: "/reset-password",
     element: <AuthLayout><ResetPassword /></AuthLayout>,
+  },
+  {
+    path: "/auth/callback",
+    element: <AuthCallback />,
   },
   {
     path: "/dashboard",
