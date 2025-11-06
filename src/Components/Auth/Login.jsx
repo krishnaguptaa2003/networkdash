@@ -2,6 +2,33 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaUser, FaLock, FaArrowRight, FaGithub, FaGoogle, FaTwitter } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
+import Cookies from 'js-cookie'; // 1. IMPORT js-cookie
+
+// --- 2. HELPER FUNCTIONS FOR TWITTER (PKCE) ---
+// Creates a secure random string
+const generateRandomString = (length) => {
+  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = '';
+  for (let i = 0; i < length; i++) {
+    text += possible.charAt(Math.floor(Math.random() * possible.length));
+  }
+  return text;
+};
+
+// Hashes the random string (required by Twitter)
+const sha256 = async (buffer) => {
+  return await crypto.subtle.digest('SHA-256', buffer);
+};
+
+// Encodes the hash in a way Twitter understands
+const base64urlencode = (buffer) => {
+  return btoa(String.fromCharCode.apply(null, new Uint8Array(buffer)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+};
+// --- END OF HELPER FUNCTIONS ---
+
 
 const Login = () => {
   const navigate = useNavigate();
@@ -10,17 +37,47 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // --- THIS IS THE NEW SOCIAL LOGIN HANDLER ---
-  const handleSocialLogin = (provider) => {
-    // This function just redirects to our backend "login" function
-    // which will then redirect the user to Google, GitHub, or Twitter
-    window.location.href = `/.netlify/functions/oauth-login?provider=${provider}`;
-  };
+  // --- 3. UPDATED LOGIN HANDLER ---
+  const handleSocialLogin = async (provider) => {
+    let authUrl;
 
+    if (provider === 'twitter') {
+      // Twitter requires a special "PKCE" flow
+      const code_verifier = generateRandomString(128);
+      const state = generateRandomString(128);
+
+      // Store the verifier and state in cookies
+      Cookies.set('twitter_code_verifier', code_verifier, { expires: 5 / (24 * 60) }); // 5 min expiry
+      Cookies.set('twitter_state', state, { expires: 5 / (24 * 60) });
+
+      // Create the 'code_challenge' from the verifier
+      const encoder = new TextEncoder();
+      const data = encoder.encode(code_verifier);
+      const hashed = await sha256(data);
+      const code_challenge = base64urlencode(hashed);
+
+      // Build the URL and send it to our *backend* to be finalized
+      const params = new URLSearchParams({
+        provider,
+        state,
+        code_challenge,
+        code_challenge_method: 'S256',
+      });
+      authUrl = `/.netlify/functions/oauth-login?${params.toString()}`;
+
+    } else {
+      // Google and GitHub are simpler
+      authUrl = `/.netlify/functions/oauth-login?provider=${provider}`;
+    }
+
+    // Redirect the user
+    window.location.href = authUrl;
+  };
+  
   const handleSubmit = async (e) => {
+    // ... (Your existing email/password login code is perfect)
     e.preventDefault();
     setIsLoading(true);
-
     try {
       const response = await fetch('/.netlify/functions/auth', {
         method: 'POST',
@@ -31,10 +88,8 @@ const Login = () => {
           password: password
         }),
       });
-
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Login failed');
-
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       navigate('/dashboard');
@@ -52,13 +107,14 @@ const Login = () => {
           <div className="p-1 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
 
           <div className="px-6 py-6 sm:px-8 sm:py-6">
+            {/* ... (Your existing header) ... */}
             <div className="text-center mb-6">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Welcome to Scrpcy</h2>
               <p className="text-gray-500 mt-1 text-sm sm:text-base">Sign in to access your data</p>
             </div>
 
+            {/* ... (Your existing email/password form) ... */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* --- Your existing email/password form --- */}
               <AuthFormInput
                 id="login-email"
                 label="Email"
@@ -69,6 +125,7 @@ const Login = () => {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
+
               <AuthFormInput
                 id="login-password"
                 label="Password"
@@ -81,6 +138,7 @@ const Login = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
               />
+
               <div className="flex items-center justify-between text-sm sm:text-base">
                 <div className="flex items-center">
                   <input
@@ -100,6 +158,7 @@ const Login = () => {
                   Forgot password?
                 </button>
               </div>
+
               <button
                 type="submit"
                 disabled={isLoading}
@@ -117,8 +176,6 @@ const Login = () => {
                 )}
               </button>
             </form>
-            {/* --- END of email/password form --- */}
-
 
             <div className="mt-5">
               <div className="relative">
@@ -130,7 +187,7 @@ const Login = () => {
                 </div>
               </div>
 
-              {/* --- THIS IS THE UPDATED PART --- */}
+              {/* --- 4. UPDATED BUTTONS --- */}
               <div className="mt-5 grid grid-cols-3 gap-3">
                 <button
                   type="button"
@@ -154,8 +211,6 @@ const Login = () => {
                   <FaTwitter className="text-blue-400" />
                 </button>
               </div>
-              {/* --- END OF UPDATED PART --- */}
-
             </div>
           </div>
 
@@ -177,3 +232,4 @@ const Login = () => {
 };
 
 export default Login;
+
