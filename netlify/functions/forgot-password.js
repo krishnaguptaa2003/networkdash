@@ -1,6 +1,4 @@
-// D:\Github\networkdash\netlify\functions\forgot-password.js
-// **** THIS IS THE UPDATED FILE ****
-
+/* eslint-disable no-undef */
 const { getClient } = require('./db');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
@@ -43,14 +41,24 @@ exports.handler = async (event) => {
       );
 
       if (users.length === 0) {
+        // We still send 200 OK to prevent attackers from
+        // guessing which emails are registered.
         return jsonResponse(200, { message: 'Reset email sent (if user exists)' });
       }
 
+      // --- THIS IS THE NEW RATE LIMITING FIX ---
+      const user = users[0];
+      if (user.reset_token_expiry && new Date(user.reset_token_expiry) > new Date()) {
+        // A valid token already exists. Block the request.
+        return jsonResponse(429, { 
+          error: 'A reset link has already been sent. Please try again after your current link expires (30 minutes).' 
+        });
+      }
+      // --- END OF FIX ---
+
+      // If no valid token exists, create a new one.
       const resetToken = crypto.randomBytes(32).toString('hex');
-      
-      // --- 1. THIS IS THE FIRST CHANGE ---
-      // Set expiry for 30 minutes from now
-      const resetTokenExpiry = new Date(Date.now() + 1800000); // 30 minutes (was 3600000)
+      const resetTokenExpiry = new Date(Date.now() + 1800000); // 30 minutes
 
       await client.query(
         'UPDATE users SET reset_token = $1, reset_token_expiry = $2 WHERE email = $3',
@@ -59,16 +67,13 @@ exports.handler = async (event) => {
 
       const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-      // Send the email
       await transporter.sendMail({
         from: process.env.SMTP_FROM,
         to: email,
         subject: 'Password Reset Instructions',
         html: `
           <p>You requested a password reset for your NetworkDash account.</p>
-          
           <p>Click this link to reset your password (it expires in 30 minutes):</p>
-          
           <p><a href="${resetLink}">Reset Password</a></p>
           <p>If you did not request this, please ignore this email.</p>
         `
@@ -79,6 +84,7 @@ exports.handler = async (event) => {
 
     // --- 2. HANDLE 'PUT' (User is submitting a new password) ---
     else if (event.httpMethod === 'PUT') {
+      // ... (no changes to this part)
       const { token, newPassword } = body;
 
       if (!token || !newPassword) {
@@ -97,8 +103,6 @@ exports.handler = async (event) => {
       const user = users[0];
       const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-      // --- THIS CODE MAKES IT ONE-TIME-USE ---
-      // By setting reset_token = NULL, the token is instantly invalidated.
       await client.query(
         'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expiry = NULL WHERE id = $2',
         [hashedPassword, user.id]
