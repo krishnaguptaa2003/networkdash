@@ -1,38 +1,88 @@
-const mysql = require('mysql2/promise');
-const pool = mysql.createPool(process.env.DATABASE_URL);
+/* eslint-disable no-undef */
+const { getClient } = require('./db');
+const jwt = require('jsonwebtoken');
+
+// Helper function for consistent JSON responses
+const jsonResponse = (status, body) => ({
+  statusCode: status,
+  body: JSON.stringify(body),
+  headers: { 'Content-Type': 'application/json' }
+});
 
 exports.handler = async (event) => {
   if (event.httpMethod !== 'POST') {
-    return { statusCode: 405, body: 'Method Not Allowed' };
+    return jsonResponse(405, { error: 'Method Not Allowed' });
   }
 
-  const { email, otp } = JSON.parse(event.body);
-
+  let client;
   try {
-    const connection = await pool.getConnection();
-    
-    // Check if OTP matches and is not expired (10 minutes)
-    const [users] = await connection.execute(
-      `SELECT * FROM users 
-       WHERE email = ? AND otp = ? 
-       AND otp_created_at > NOW() - INTERVAL 10 MINUTE`,
-      [email, otp]
-    );
+    const { email, otp } = JSON.parse(event.body);
 
-    if (users.length === 0) {
-      return { statusCode: 400, body: JSON.stringify({ error: 'Invalid or expired OTP' }) };
+    if (!email || !otp) {
+      return jsonResponse(400, { error: 'Email and OTP are required' });
     }
 
-    // Mark user as verified
-    await connection.execute(
-      'UPDATE users SET is_verified = TRUE, otp = NULL WHERE email = ?',
+    client = await getClient();
+    
+    // Find the user by email
+    const { rows } = await client.query(
+      `SELECT * FROM users 
+       WHERE email = $1`,
       [email]
     );
 
-    connection.release();
-    return { statusCode: 200, body: JSON.stringify({ message: 'Email verified successfully' }) };
+    if (rows.length === 0) {
+      return jsonResponse(404, { error: 'User not found' });
+    }
+
+    const user = rows[0];
+
+    // Check if already verified
+    if (user.is_verified) {
+      return jsonResponse(400, { error: 'Email is already verified' });
+    }
+
+    // Check if OTP matches
+    if (user.otp !== otp) {
+      return jsonResponse(400, { error: 'Invalid OTP' });
+    }
+
+    // Check if OTP is expired (10 minutes)
+    const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+    if (user.otp_created_at < tenMinutesAgo) {
+      return jsonResponse(400, { error: 'OTP has expired. Please request a new one.' });
+    }
+
+    // --- Success! ---
+    // Mark user as verified and clear the OTP
+    await client.query(
+      'UPDATE users SET is_verified = TRUE, otp = NULL, otp_created_at = NULL WHERE email = $1',
+      [email]
+    );
+
+    // Generate a JWT token to log them in
+    const token = jwt.sign(
+      { userId: user.id, email: user.email },
+      process.env.JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+    
+    const { password_hash, ...userWithoutPassword } = user;
+    // Set is_verified to true for the returned user object
+    userWithoutPassword.is_verified = true; 
+
+    return jsonResponse(200, { 
+      message: 'Email verified successfully',
+      token: token,
+      user: userWithoutPassword
+    });
+
   } catch (error) {
     console.error('Error:', error);
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal server error' }) };
+    return jsonResponse(500, { error: 'Internal server error' });
+  } finally {
+    if (client) {
+      await client.end();
+    }
   }
 };

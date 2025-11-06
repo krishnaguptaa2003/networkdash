@@ -1,14 +1,18 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom'; // 1. IMPORT useNavigate
+import { useNavigate } from 'react-router-dom';
 import { FaUser, FaLock, FaEnvelope, FaArrowRight } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
 
-const Signup = () => { // 2. REMOVE onNavigate prop
-  const navigate = useNavigate(); // 3. INITIALIZE navigate
+const Signup = () => {
+  const navigate = useNavigate();
+  
+  // --- THESE ARE THE MISSING LINES I HAVE ADDED BACK ---
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  // --- END OF FIX ---
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -38,23 +42,14 @@ const Signup = () => { // 2. REMOVE onNavigate prop
         }),
       });
 
-      // First check if response is OK
+      const data = await response.json();
+      
       if (!response.ok) {
-        // Try to parse error response
-        let errorData;
-        try {
-          errorData = await response.json();
-        } catch (e) {
-          throw new Error(`Server error: ${response.status}`);
-        }
-        throw new Error(errorData.error || 'Signup failed');
+        throw new Error(data.error || 'Signup failed');
       }
 
-      // Process successful response
-      const data = await response.json();
-      localStorage.setItem('user', JSON.stringify(data.user));
-      localStorage.setItem('token', data.token); // 4. ADD this to log user in
-      navigate('/dashboard'); // 5. UPDATE navigation on success
+      // Signup was successful, navigate to the verify page
+      navigate('/verify-email', { state: { email: data.email } });
       
     } catch (error) {
       console.error('Signup error:', error);
@@ -112,6 +107,7 @@ const Signup = () => { // 2. REMOVE onNavigate prop
                 required
               />
 
+              {/* This component will now work because showConfirmPassword exists */}
               <AuthFormInput
                 id="confirmPassword"
                 label="Confirm Password"
@@ -172,7 +168,7 @@ const Signup = () => { // 2. REMOVE onNavigate prop
             <p className="text-center text-gray-600 text-sm sm:text-base">
               Already have an account?{' '}
               <button
-                onClick={() => navigate('/login')} // 6. UPDATE "Sign in" link
+                onClick={() => navigate('/login')}
                 className="font-medium text-indigo-600 hover:text-indigo-500"
               >
                 Sign in
@@ -186,3 +182,4 @@ const Signup = () => { // 2. REMOVE onNavigate prop
 };
 
 export default Signup;
+
