@@ -25,13 +25,11 @@ async function getGoogleToken(code, redirectUri) {
     redirect_uri: redirectUri,
     grant_type: 'authorization_code',
   };
-
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  
   if (!response.ok) {
     const errorText = await response.text();
     console.error("Google Token Error:", errorText);
@@ -62,7 +60,6 @@ async function getGitHubToken(code, redirectUri) {
     code,
     redirect_uri: redirectUri
   };
-
   const response = await fetch(url, {
     method: 'POST',
     headers: {
@@ -71,7 +68,6 @@ async function getGitHubToken(code, redirectUri) {
     },
     body: JSON.stringify(body),
   });
-
   if (!response.ok) {
     const errorText = await response.text();
     console.error("GitHub Token Error:", errorText);
@@ -120,7 +116,6 @@ async function getGitHubEmails(accessToken) {
 async function getTwitterToken(code, redirectUri, codeVerifier) {
   console.log('Getting Twitter token...');
   const url = 'https://api.twitter.com/2/oauth2/token';
-  
   const body = new URLSearchParams({
     code,
     grant_type: 'authorization_code',
@@ -128,20 +123,17 @@ async function getTwitterToken(code, redirectUri, codeVerifier) {
     redirect_uri: redirectUri,
     code_verifier: codeVerifier,
   });
-
   const basicAuth = Buffer.from(
     `${process.env.TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`
   ).toString('base64');
-
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 
+    headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       'Authorization': `Basic ${basicAuth}`
     },
     body: body.toString(),
   });
-
   if (!response.ok) {
     const errorText = await response.text();
     console.error('Twitter Token Error:', errorText);
@@ -152,14 +144,12 @@ async function getTwitterToken(code, redirectUri, codeVerifier) {
 
 async function getTwitterProfile(accessToken) {
   console.log('Getting Twitter profile...');
-  const userFields = ['id', 'name', 'username', 'profile_image_url'].join(',');
-  // We add `email` as a top-level query parameter, not inside user.fields
-  const url = `https://api.twitter.com/2/users/me?user.fields=${userFields}&expansions=pinned_user_id&user.fields=email`;
-  
+  const userFields = 'id,name,username,profile_image_url';
+  // Request 'email' as a top-level field using 'user.fields=email'
+  const url = `https://api.twitter.com/2/users/me?user.fields=${userFields},email`;
+  
   const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-    },
+    headers: { 'Authorization': `Bearer ${accessToken}` },
   });
 
   if (!response.ok) {
@@ -167,31 +157,29 @@ async function getTwitterProfile(accessToken) {
     console.error('Twitter Profile Error:', errorText);
     throw new Error('Failed to fetch Twitter profile');
   }
-  
   const profileData = await response.json();
   console.log('Twitter profile data:', profileData);
+s   // The response will be like: { data: { id, name, username, email, ... } }
   return profileData;
 }
-
 // --- END OF TWITTER HELPERS ---
 
 async function findOrCreateUser(client, email, name, isVerified = false, provider = 'oauth') {
+  // ... (This function is correct)
   console.log(`Finding or creating user: ${email}, ${name}, verified: ${isVerified}`);
-  
   let user;
   const { rows: existingUser } = await client.query(
     'SELECT * FROM users WHERE email = $1',
     [email]
   );
-
   if (existingUser.length > 0) {
     user = existingUser[0];
     console.log('Found existing user:', user.id);
   } else {
     const dummyHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
     const { rows: newUser } = await client.query(
-      `INSERT INTO users (name, email, password_hash, is_verified) 
-       VALUES ($1, $2, $3, $4) 
+      `INSERT INTO users (name, email, password_hash, is_verified) 
+       VALUES ($1, $2, $3, $4) 
        RETURNING *`,
       [name, email, dummyHash, isVerified]
     );
@@ -202,18 +190,16 @@ async function findOrCreateUser(client, email, name, isVerified = false, provide
 }
 
 const getFrontendUrl = (event, rootUrl) => {
+  // ... (This function is correct)
   console.log('Detecting frontend URL...');
   console.log('Root URL:', rootUrl);
   console.log('FRONTEND_URL env:', process.env.FRONTEND_URL);
-  
   if (process.env.FRONTEND_URL) {
     console.log('Using FRONTEND_URL from env:', process.env.FRONTEND_URL);
     return process.env.FRONTEND_URL;
   }
-  
   const requestOrigin = event.headers.origin || event.headers.referer;
   console.log('Request origin:', requestOrigin);
-  
   if (requestOrigin) {
     try {
       const url = new URL(requestOrigin);
@@ -226,24 +212,22 @@ const getFrontendUrl = (event, rootUrl) => {
       console.log('Could not parse origin:', requestOrigin);
     }
   }
-  
   if (rootUrl.includes('localhost') || rootUrl.includes('127.0.0.1')) {
     console.log('Using default localhost frontend URL');
     return 'http://localhost:5173';
   }
-  
   const netlifyUrl = rootUrl.replace(/\.netlify\.app.*$/, '.netlify.app');
   console.log('Using Netlify frontend URL:', netlifyUrl);
   return netlifyUrl;
 };
 
+// --- Main Handler ---
 exports.handler = async (event) => {
   console.log('=== OAUTH HANDLER STARTED ===');
   console.log('HTTP Method:', event.httpMethod);
   console.log('Query Parameters:', event.queryStringParameters);
-  
+
   let provider = event.queryStringParameters.provider;
-  // This handles the `provider=twitter?error=...` case
   if (provider && provider.includes('?')) {
     provider = provider.split('?')[0];
   }
@@ -251,10 +235,9 @@ exports.handler = async (event) => {
   const { code, state } = event.queryStringParameters;
   const cookies = parseCookies(event.headers.cookie);
   const rootUrl = process.env.URL || 'http://localhost:8888';
-  
   const frontendUrl = getFrontendUrl(event, rootUrl);
   const redirectUri = `${rootUrl}/.netlify/functions/oauth-handler?provider=${provider}`;
-  
+
   console.log('OAuth Handler Configuration:', {
     provider,
     frontendUrl,
@@ -273,15 +256,20 @@ exports.handler = async (event) => {
   }
 
   if (!code) {
-    console.error('Missing authorization code. This is likely due to a scope error or user cancellation.');
+    console.error('Missing authorization code. Likely scope error or user cancellation.');
+    // We MUST redirect back to the frontend with an error
+    const errorUrl = `${frontendUrl}/login?error=oauth_failed&message=Authorization code missing.`;
     return {
-      statusCode: 400,
-      body: JSON.stringify({ error: 'Missing authorization code' })
+      statusCode: 302,
+      headers: { Location: errorUrl },
     };
   }
 
   let client;
   let user;
+  let token;
+  let responseHeaders = {}; // Start with empty headers
+  let responseMultiValueHeaders = {}; // Start with empty multi-value headers
 
   try {
     client = await getClient();
@@ -290,36 +278,25 @@ exports.handler = async (event) => {
     if (provider === 'google') {
       console.log('Processing Google OAuth...');
       const tokenData = await getGoogleToken(code, redirectUri);
-      console.log('Google token received');
       const profile = await getGoogleProfile(tokenData.access_token);
-      console.log('Google profile received:', { email: profile.email, name: profile.name });
       user = await findOrCreateUser(
-        client, 
-        profile.email, 
-        profile.name, 
+        client,
+        profile.email,
+        profile.name,
         profile.verified_email,
         'google'
       );
-      
     } else if (provider === 'github') {
       console.log('Processing GitHub OAuth...');
       const tokenData = await getGitHubToken(code, redirectUri);
-      console.log('GitHub token received');
-      
       const [profile, emails] = await Promise.all([
         getGitHubProfile(tokenData.access_token),
         getGitHubEmails(tokenData.access_token)
       ]);
-      
-      console.log('GitHub profile received:', { login: profile.login, name: profile.name });
-      console.log('GitHub emails received:', emails);
-      
       const primaryEmail = emails.find(e => e.primary && e.verified);
       if (!primaryEmail) {
-        console.error('No verified primary email found on GitHub');
-        throw new Error('No verified primary email found on GitHub. Please ensure your GitHub account has a verified primary email address.');
+        throw new Error('No verified primary email found on GitHub.');
       }
-
       user = await findOrCreateUser(
         client,
         primaryEmail.email,
@@ -327,90 +304,69 @@ exports.handler = async (event) => {
         true,
         'github'
       );
-      
     } else if (provider === 'twitter') {
       console.log('Processing Twitter OAuth...');
-      
       const savedState = cookies.twitter_state;
       if (!state || !savedState || state !== savedState) {
-        console.error('State validation failed:', { state, savedState });
         throw new Error('Invalid state. CSRF attack detected.');
       }
-
       const codeVerifier = cookies.twitter_code_verifier;
       if (!codeVerifier) {
-        console.error('Missing code verifier');
         throw new Error('Missing code verifier. Session timed out.');
       }
-
       const tokenData = await getTwitterToken(code, redirectUri, codeVerifier);
-      console.log('Twitter token received');
-      
       const profileData = await getTwitterProfile(tokenData.access_token);
       const profile = profileData.data;
-      
       if (!profile) {
         throw new Error('No profile data received from Twitter');
       }
-
-      const userEmail = profile.email; // Get email from the correct field
+      
+      // ** NEW FIX ** Twitter API v2 puts email inside the `data` object
+      const userEmail = profile.email; 
       const name = profile.name || profile.username;
 
       if (!userEmail) {
         console.error('Twitter profile data did not include email:', profileData);
-       throw new Error('Twitter did not provide an email address. Make sure the app has the "email.read" scope.');
+        throw new Error('Twitter did not provide an email address. Make sure the app has "Request email from users" enabled.');
       }
-      
-      console.log('Twitter profile received:', { 
-        id: profile.id, 
-        username: profile.username, 
-        name: name,
-        email: userEmail
-      });
-
+      console.log('Twitter profile received:', { ...profile, email: userEmail });
       user = await findOrCreateUser(
         client,
         userEmail,
         name,
-        true, 
+        true,
         'twitter'
       );
-      
+
+      // ** FIX **: Add cookie clearing headers ONLY for Twitter
+      responseMultiValueHeaders['Set-Cookie'] = [
+        'twitter_code_verifier=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax',
+        'twitter_state=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
+      ];
+
     } else {
-      throw new Error(`Unsupported provider: ${provider}`);
+      throw new Error(`Unsupported provider: ${provider}`);
     }
 
     // --- COMMON SUCCESS ---
     console.log('OAuth successful, creating JWT token for user:', user.id);
-    
-    const token = jwt.sign(
+    token = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
-    
     const { password_hash, ...userWithoutPassword } = user;
-    const userJson = JSON.stringify(userWithoutPassword);
-    
+    const userJson = JSON.stringify(userWithoutPassword);
     const callbackUrl = `${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(userJson)}`;
-    
+    
     console.log('Redirecting to callback URL:', callbackUrl);
+    responseHeaders['Location'] = callbackUrl; // Set the redirect location
 
-    // *** THIS IS THE FIX FOR THE "Set-Cookie" ERROR ***
     return {
       statusCode: 302,
-      headers: {
-        Location: callbackUrl,
-      },
-      // Use multiValueHeaders to correctly send multiple cookies
-      multiValueHeaders: {
-        'Set-Cookie': [
-          'twitter_code_verifier=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax',
-          'twitter_state=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-        ]
-      }
+      headers: responseHeaders,
+      multiValueHeaders: responseMultiValueHeaders,
     };
-    // *** END OF FIX ***
 
   } catch (error) {
     console.error('OAuth Error Details:', {
@@ -418,17 +374,12 @@ exports.handler = async (event) => {
       stack: error.stack,
       provider: provider
     });
-    
     const errorMessage = encodeURIComponent(error.message);
     const errorUrl = `${frontendUrl}/login?error=oauth_failed&message=${errorMessage}&provider=${provider}`;
-    
     console.log('Redirecting to error URL:', errorUrl);
-    
     return {
       statusCode: 302,
-      headers: {
-        Location: errorUrl,
-      },
+      headers: { 'Location': errorUrl },
     };
   } finally {
     if (client) {

@@ -33,10 +33,10 @@ const Sidebar = ({
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    onNavigate('login');
-  };
+    localStorage.removeItem('token'); // This logs the user out
+    localStorage.removeItem('user'); // This clears user data
+    onNavigate('login'); // This redirects to login
+};
 
   return (
     <>

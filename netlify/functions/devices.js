@@ -1,67 +1,74 @@
-const mysql = require('mysql2/promise');
-const pool = mysql.createPool(process.env.DATABASE_URL);
+/* eslint-disable no-undef */
+const { getClient } = require('./db'); // Uses the same 'pg' client as your other functions
 const jwt = require('jsonwebtoken');
 
+// Helper function for consistent JSON responses
+const jsonResponse = (status, body) => ({
+  statusCode: status,
+  body: JSON.stringify(body),
+  headers: { 'Content-Type': 'application/json' }
+});
+
 exports.handler = async (event) => {
-  // Verify JWT
-  const token = event.headers.authorization?.split(' ')[1];
-  if (!token) {
-    return { statusCode: 401, body: JSON.stringify({ error: 'Unauthorized' }) };
-  }
+  const token = event.headers.authorization?.split(' ')[1];
+  if (!token) {
+    return jsonResponse(401, { error: 'Unauthorized' });
+  }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const userId = decoded.userId;
+  let client;
+  let userId;
 
-    const connection = await pool.getConnection();
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    userId = decoded.userId;
+  } catch (error) {
+    console.error('Invalid token:', error);
+    return jsonResponse(401, { error: 'Invalid token' });
+  }
 
-    if (event.httpMethod === 'GET') {
-      // Get all devices for user
-      const [devices] = await connection.execute(
-        'SELECT * FROM devices WHERE user_id = ?',
-        [userId]
-      );
-      connection.release();
-      return { statusCode: 200, body: JSON.stringify(devices) };
-    }
-    else if (event.httpMethod === 'POST') {
-      // Add new device
-      const { plant, department, ip_address } = JSON.parse(event.body);
-      const [result] = await connection.execute(
-        'INSERT INTO devices (plant, department, ip_address, user_id) VALUES (?, ?, ?, ?)',
-        [plant, department, ip_address, userId]
-      );
-      connection.release();
-      return { statusCode: 201, body: JSON.stringify({ id: result.insertId }) };
-    }
-    else if (event.httpMethod === 'PUT') {
-      // Update device
-      const { id, plant, department, ip_address } = JSON.parse(event.body);
-      await connection.execute(
-        'UPDATE devices SET plant = ?, department = ?, ip_address = ? WHERE id = ? AND user_id = ?',
-        [plant, department, ip_address, id, userId]
-      );
-      connection.release();
-      return { statusCode: 200, body: JSON.stringify({ message: 'Device updated' }) };
-    }
-    else if (event.httpMethod === 'DELETE') {
-      // Delete device
-      const { id } = JSON.parse(event.body);
-      await connection.execute(
-        'DELETE FROM devices WHERE id = ? AND user_id = ?',
-        [id, userId]
-      );
-      connection.release();
-      return { statusCode: 200, body: JSON.stringify({ message: 'Device deleted' }) };
-    }
+  try {
+    client = await getClient();
 
-    connection.release();
-    return { statusCode: 405, body: 'Method Not Allowed' };
-  } catch (error) {
-    console.error('Error:', error);
-    if (error.name === 'JsonWebTokenError') {
-      return { statusCode: 401, body: JSON.stringify({ error: 'Invalid token' }) };
-    }
-    return { statusCode: 500, body: JSON.stringify({ error: 'Internal server error' }) };
-  }
+    if (event.httpMethod === 'GET') {
+      const { rows: devices } = await client.query(
+        'SELECT * FROM devices WHERE user_id = $1',
+        [userId]
+      );
+      return jsonResponse(200, devices);
+    } 
+    else if (event.httpMethod === 'POST') {
+      const { plant, department, ip_address } = JSON.parse(event.body);
+      const { rows } = await client.query(
+        'INSERT INTO devices (plant, department, ip_address, user_id) VALUES ($1, $2, $3, $4) RETURNING id',
+        [plant, department, ip_address, userId]
+      );
+      return jsonResponse(201, { id: rows[0].id });
+    } 
+    else if (event.httpMethod === 'PUT') {
+      const { id, plant, department, ip_address } = JSON.parse(event.body);
+      await client.query(
+        'UPDATE devices SET plant = $1, department = $2, ip_address = $3 WHERE id = $4 AND user_id = $5',
+        [plant, department, ip_address, id, userId]
+      );
+      return jsonResponse(200, { message: 'Device updated' });
+    } 
+    else if (event.httpMethod === 'DELETE') {
+      const { id } = JSON.parse(event.body);
+      await client.query(
+        'DELETE FROM devices WHERE id = $1 AND user_id = $2',
+        [id, userId]
+      );
+      return jsonResponse(200, { message: 'Device deleted' });
+    }
+
+    return jsonResponse(405, { error: 'Method Not Allowed' });
+
+  } catch (error) {
+    console.error('Device function error:', error);
+    return jsonResponse(500, { error: 'Internal server error' });
+  } finally {
+    if (client) {
+      await client.end();
+    }
+  }
 };
