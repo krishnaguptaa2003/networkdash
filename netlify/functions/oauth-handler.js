@@ -123,8 +123,6 @@ async function getTwitterToken(code, redirectUri, codeVerifier) {
 
 async function getTwitterProfile(accessToken) {
   // --- FIX #2: Correct user.fields according to Twitter API v2 ---
-  // 'email' is not a valid field in the users/me endpoint
-  // We need to request profile_image_url separately from email
   const userFields = ['id', 'name', 'username', 'profile_image_url'].join(',');
   const url = `https://api.twitter.com/2/users/me?user.fields=${userFields}`;
   
@@ -143,27 +141,6 @@ async function getTwitterProfile(accessToken) {
   return profileData;
 }
 
-// New function to get Twitter email (requires email scope and separate request)
-async function getTwitterEmail(accessToken) {
-  const url = 'https://api.twitter.com/2/users/me?user.fields=id';
-  
-  const response = await fetch(url, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-    },
-  });
-
-  if (!response.ok) {
-    console.error('Twitter Email Error:', await response.text());
-    // If we can't get email, return null and handle gracefully
-    return null;
-  }
-  
-  const data = await response.json();
-  // Note: Getting the actual email requires additional permissions and review from Twitter
-  // For now, we'll create a placeholder email
-  return null;
-}
 // --- END OF TWITTER HELPERS ---
 
 // This function finds an existing user or creates a new one
@@ -182,7 +159,7 @@ async function findOrCreateUser(client, email, name, isVerified = false) {
     const { rows: newUser } = await client.query(
       `INSERT INTO users (name, email, password_hash, is_verified) 
        VALUES ($1, $2, $3, $4) 
-       RETURNING *`, // Return all columns
+       RETURNING *`,
       [name, email, dummyHash, isVerified]
     );
     user = newUser[0];
@@ -195,7 +172,12 @@ exports.handler = async (event) => {
   const { provider, code, state } = event.queryStringParameters;
   const cookies = parseCookies(event.headers.cookie);
   const rootUrl = process.env.URL || 'http://localhost:8888';
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  
+  // FIX: Use the request origin for local development
+  const requestOrigin = event.headers.origin || 'http://localhost:5173';
+  const isLocalDev = rootUrl.includes('localhost') || rootUrl.includes('127.0.0.1');
+  const frontendUrl = isLocalDev ? requestOrigin : (process.env.FRONTEND_URL || 'http://localhost:5173');
+  
   const redirectUri = `${rootUrl}/.netlify/functions/oauth-handler?provider=${provider}`;
   
   let client;
@@ -212,7 +194,7 @@ exports.handler = async (event) => {
         client, 
         profile.email, 
         profile.name, 
-        profile.verified_email // Use Google's verification
+        profile.verified_email
       );
     } 
     
@@ -231,8 +213,8 @@ exports.handler = async (event) => {
       user = await findOrCreateUser(
         client,
         primaryEmail.email,
-        profile.name || profile.login, // Use name, fall back to login
-        true // GitHub email is verified
+        profile.name || profile.login,
+        true
       );
     } 
     
@@ -254,22 +236,17 @@ exports.handler = async (event) => {
       
       // 4. Get profile (without email field)
       const profileData = await getTwitterProfile(tokenData.access_token);
-      const profile = profileData.data; // Twitter nests profile in 'data'
+      const profile = profileData.data;
 
-      // 5. Try to get email (may return null)
-      const email = await getTwitterEmail(tokenData.access_token);
-      
-      // Create email from username if no email available
-      // Note: Twitter often doesn't provide email even with email.read scope
-      // without additional app review and verification
-      const userEmail = email || `${profile.username}@twitter.placeholder`;
+      // 5. Create email from username (Twitter often doesn't provide email)
+      const userEmail = `${profile.username}@twitter.placeholder`;
       const name = profile.name || profile.username;
 
       user = await findOrCreateUser(
         client,
         userEmail,
         name,
-        !!email // Only mark as verified if we got an actual email
+        false // Twitter emails are not verified by default
       );
     } 
     
@@ -278,25 +255,27 @@ exports.handler = async (event) => {
     }
 
     // --- COMMON SUCCESS ---
-    // If we have a user, create a token and send them to the app
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
     
-    // We must return ALL user fields so the frontend can store them
     const { password_hash, ...userWithoutPassword } = user;
     const userJson = JSON.stringify(userWithoutPassword);
+    
+    // FIX: Use the correct frontend URL for callback
     const callbackUrl = `${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(userJson)}`;
 
     return {
-      statusCode: 302, // This is a redirect
+      statusCode: 302,
       headers: {
         Location: callbackUrl,
         // Clear cookies
-        'Set-Cookie': 'twitter_code_verifier=; Max-Age=0; Path=/',
-        'Set-Cookie-2': 'twitter_state=; Max-Age=0; Path=/', // Hack for multiple cookies
+        'Set-Cookie': [
+          'twitter_code_verifier=; Max-Age=0; Path=/; HttpOnly',
+          'twitter_state=; Max-Age=0; Path=/; HttpOnly'
+        ],
       },
     };
 

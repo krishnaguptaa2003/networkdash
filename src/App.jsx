@@ -7,7 +7,7 @@ import ResetPassword from './Components/Auth/ResetPassword';
 import AuthCallback from './Components/Auth/AuthCallback';
 import Dashboard from './Components/Pages/Dashboard';
 import ProtectedRoute from './Components/ProtectedRoute';
-import PublicRoute from './Components/PublicRoute'; // This file exists
+import PublicRoute from './Components/PublicRoute'; // Make sure this import is correct
 
 // This is the auth layout wrapper
 const AuthLayout = ({ children }) => (
