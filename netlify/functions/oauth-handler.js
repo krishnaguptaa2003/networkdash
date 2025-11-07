@@ -1,15 +1,20 @@
 /* eslint-disable no-undef */
-// This function handles the callback from the social provider
-// after the user has authorized the app.
-
 const { getClient } = require('./db');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 
-// --- HELPER FUNCTIONS ---
+// Helper to parse cookies from the request
+const parseCookies = (cookieHeader) => {
+  if (!cookieHeader) return {};
+  return cookieHeader.split(';').reduce((acc, cookie) => {
+    const [key, value] = cookie.trim().split('=');
+    acc[key] = value;
+    return acc;
+  }, {});
+};
 
-// 1. Google
+// --- Google Helpers ---
 async function getGoogleToken(code, redirectUri) {
   const url = 'https://oauth2.googleapis.com/token';
   const body = {
@@ -19,164 +24,259 @@ async function getGoogleToken(code, redirectUri) {
     redirect_uri: redirectUri,
     grant_type: 'authorization_code',
   };
+
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!response.ok) throw new Error('Failed to fetch Google token');
+  
+  if (!response.ok) {
+    console.error("Google Token Error:", await response.json());
+    throw new Error('Failed to fetch Google token');
+  }
   return response.json();
 }
-
 async function getGoogleProfile(accessToken) {
   const url = `https://www.googleapis.com/oauth2/v2/userinfo?access_token=${accessToken}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error('Failed to fetch Google profile');
-  const profile = await response.json();
-  return {
-    email: profile.email,
-    name: profile.name,
-    verified: profile.verified_email,
-  };
+  return response.json();
 }
 
-// 2. GitHub
-async function getGitHubToken(code, redirectUri) {
+// --- GitHub Helpers ---
+async function getGitHubToken(code) {
   const url = 'https://github.com/login/oauth/access_token';
   const body = {
-    code,
     client_id: process.env.GITHUB_CLIENT_ID,
     client_secret: process.env.GITHUB_CLIENT_SECRET,
-    redirect_uri: redirectUri,
+    code,
   };
+
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Accept': 'application/json' // Important for GitHub
+      'Accept': 'application/json' // Request JSON response
     },
     body: JSON.stringify(body),
   });
+
   if (!response.ok) throw new Error('Failed to fetch GitHub token');
   return response.json();
 }
-
 async function getGitHubProfile(accessToken) {
   const url = 'https://api.github.com/user';
   const response = await fetch(url, {
     headers: {
-      Authorization: `token ${accessToken}`,
-    },
+      'Authorization': `Bearer ${accessToken}`,
+      'User-Agent': 'NetworkDashApp'
+    }
   });
   if (!response.ok) throw new Error('Failed to fetch GitHub profile');
-  const profile = await response.json();
+  return response.json();
+}
+async function getGitHubEmails(accessToken) {
+  const url = 'https://api.github.com/user/emails';
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+      'User-Agent': 'NetworkDashApp'
+    }
+  });
+  if (!response.ok) throw new Error('Failed to fetch GitHub emails');
+  return response.json();
+}
+
+// --- TWITTER HELPERS ---
+async function getTwitterToken(code, redirectUri, codeVerifier) {
+  const url = 'https://api.twitter.com/2/oauth2/token';
   
-  // GitHub doesn't always provide a public email
-  let email = profile.email;
-  if (!email) {
-    // If primary email is private, fetch all emails
-    const emailResponse = await fetch('https://api.github.com/user/emails', {
-      headers: { Authorization: `token ${accessToken}` },
-    });
-    const emails = await emailResponse.json();
-    const primaryEmail = emails.find(e => e.primary && e.verified);
-    if (!primaryEmail) throw new Error('No verified primary email found on GitHub');
-    email = primaryEmail.email;
+  const body = new URLSearchParams({
+    code,
+    grant_type: 'authorization_code',
+    client_id: process.env.TWITTER_CLIENT_ID,
+    redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
+  });
+
+  // Twitter uses Basic Auth for the token exchange
+  const basicAuth = Buffer.from(
+    `${process.env.TWITTER_CLIENT_ID}:${process.env.TWITTER_CLIENT_SECRET}`
+  ).toString('base64');
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Authorization': `Basic ${basicAuth}`
+    },
+    body: body.toString(),
+  });
+
+  if (!response.ok) {
+    console.error('Twitter Token Error:', await response.text());
+    throw new Error('Failed to fetch Twitter token');
   }
+  return response.json();
+}
+
+async function getTwitterProfile(accessToken) {
+  // --- THIS IS PROBLEM #2 ---
+  // The 'email' field is incorrectly placed here
+  const url = 'https://api.twitter.com/2/users/me?user.fields=profile_image_url,email';
   
-  return {
-    email: email,
-    name: profile.name || profile.login, // Use name, fallback to login
-    verified: true, // We check for a verified email
-  };
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    console.error('Twitter Profile Error:', await response.text());
+    throw new Error('Failed to fetch Twitter profile');
+  }
+  return response.json();
+}
+// --- END OF TWITTER HELPERS ---
+
+// This function finds an existing user or creates a new one
+async function findOrCreateUser(client, email, name, isVerified = false) {
+  let user;
+  const { rows: existingUser } = await client.query(
+    'SELECT * FROM users WHERE email = $1',
+    [email]
+  );
+
+  if (existingUser.length > 0) {
+    user = existingUser[0];
+  } else {
+    // Create a dummy password for social-only signups
+    const dummyHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+    const { rows: newUser } = await client.query(
+      `INSERT INTO users (name, email, password_hash, is_verified) 
+       VALUES ($1, $2, $3, $4) 
+       RETURNING *`, // Return all columns
+      [name, email, dummyHash, isVerified]
+    );
+    user = newUser[0];
+  }
+  return user;
 }
 
-// 3. Twitter (Placeholder - requires complex PKCE flow)
-async function getTwitterProfile(code) {
-  console.warn('Twitter login is not yet implemented');
-  throw new Error('Twitter login is not supported');
-  // This would involve exchanging the code for a token, then fetching profile
-}
-
-// --- MAIN HANDLER ---
 
 exports.handler = async (event) => {
-  const { code, provider } = event.queryStringParameters;
-  const redirectUri = `${process.env.URL}/.netlify/functions/oauth-handler?provider=${provider}`;
+  const { provider, code, state } = event.queryStringParameters;
+  const cookies = parseCookies(event.headers.cookie);
+  const rootUrl = process.env.URL || 'http://localhost:8888';
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const redirectUri = `${rootUrl}/.netlify/functions/oauth-handler?provider=${provider}`;
   
   let client;
-  let profile;
-  
+  let user;
+
   try {
-    // --- Step 1: Get Profile from Social Provider ---
-    switch (provider) {
-      case 'google': {
-        const tokenData = await getGoogleToken(code, redirectUri);
-        profile = await getGoogleProfile(tokenData.access_token);
-        break;
-      }
-      case 'github': {
-        const tokenData = await getGitHubToken(code, redirectUri);
-        profile = await getGitHubProfile(tokenData.access_token);
-        break;
-      }
-      case 'twitter': {
-        profile = await getTwitterProfile(code);
-        break;
-      }
-      default:
-        throw new Error('Invalid provider');
-    }
-
-    if (!profile || !profile.verified) {
-      throw new Error('Email not verified by social provider');
-    }
-
-    // --- Step 2: Find or Create User in *Our* Database ---
     client = await getClient();
-    let user;
-    const { rows: existingUser } = await client.query(
-      'SELECT * FROM users WHERE email = $1',
-      [profile.email]
-    );
 
-    if (existingUser.length > 0) {
-      // User exists! Just fetch them.
-      user = existingUser[0];
-    } else {
-      // User doesn't exist. Create a new account.
-      // We create a "dummy" password hash because our table requires one.
-      const dummyHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+    if (provider === 'google') {
+      const tokenData = await getGoogleToken(code, redirectUri);
+      const profile = await getGoogleProfile(tokenData.access_token);
       
-      const { rows: newUser } = await client.query(
-        `INSERT INTO users (name, email, password_hash, is_verified) 
-         VALUES ($1, $2, $3, $4) 
-         RETURNING id, name, email, is_verified`,
-        [profile.name, profile.email, dummyHash, true] // Mark as verified
+      user = await findOrCreateUser(
+        client, 
+        profile.email, 
+        profile.name, 
+        profile.verified_email // Use Google's verification
       );
-      user = newUser[0];
-    }
+    } 
     
-    // --- Step 3: Create *Our* JWT Token ---
+    else if (provider === 'github') {
+      const tokenData = await getGitHubToken(code);
+      const [profile, emails] = await Promise.all([
+        getGitHubProfile(tokenData.access_token),
+        getGitHubEmails(tokenData.access_token)
+      ]);
+      
+      const primaryEmail = emails.find(e => e.primary && e.verified);
+      if (!primaryEmail) {
+        throw new Error('No verified primary email found on GitHub');
+      }
+
+      user = await findOrCreateUser(
+        client,
+        primaryEmail.email,
+        profile.name || profile.login, // Use name, fall back to login
+        true // GitHub email is verified
+      );
+    } 
+    
+    else if (provider === 'twitter') {
+      // 1. Check state for security
+      const savedState = cookies.twitter_state;
+      if (!state || !savedState || state !== savedState) {
+        throw new Error('Invalid state. CSRF attack detected.');
+      }
+
+      // 2. Get the verifier from the cookie
+      const codeVerifier = cookies.twitter_code_verifier;
+      if (!codeVerifier) {
+        throw new Error('Missing code verifier. Session timed out.');
+      }
+
+      // 3. Get token
+      const tokenData = await getTwitterToken(code, redirectUri, codeVerifier);
+      
+      // 4. Get profile
+      const profileData = await getTwitterProfile(tokenData.access_token);
+      const profile = profileData.data; // Twitter nests profile in 'data'
+
+      // --- THIS IS THE BUGGY PART ---
+      // The 'email' field is not available here and will fail
+      const email = profile.email || `${profile.username}@twitter.placeholder`; 
+      const name = profile.name;
+
+      user = await findOrCreateUser(
+        client,
+        email,
+        name,
+        profile.email ? true : false // Only mark as verified if we got an email
+      );
+    } 
+    
+    else {
+      throw new Error('Invalid provider');
+    }
+
+    // --- COMMON SUCCESS ---
+    // If we have a user, create a token and send them to the app
     const token = jwt.sign(
       { userId: user.id, email: user.email },
       process.env.JWT_SECRET,
       { expiresIn: '24h' }
     );
     
-    // --- Step 4: Redirect User to Frontend Callback Page ---
-    const frontendUrl = `${process.env.FRONTEND_URL}/auth/callback?token=${token}&user=${encodeURIComponent(JSON.stringify(user))}`;
+    // We must return ALL user fields so the frontend can store them
+    const { password_hash, ...userWithoutPassword } = user;
+    const userJson = JSON.stringify(userWithoutPassword);
+    const callbackUrl = `${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(userJson)}`;
 
     return {
       statusCode: 302, // This is a redirect
-      headers: { Location: frontendUrl },
+      headers: {
+        Location: callbackUrl,
+        // Clear cookies
+        'Set-Cookie': 'twitter_code_verifier=; Max-Age=0; Path=/',
+        'Set-Cookie-2': 'twitter_state=; Max-Age=0; Path=/', // Hack for multiple cookies
+      },
     };
 
   } catch (error) {
     console.error('OAuth Error:', error.message);
     return {
       statusCode: 302,
-      headers: { Location: `${process.env.FRONTEND_URL}/login?error=oauth_failed` },
+      headers: {
+        Location: `${frontendUrl}/login?error=oauth_failed`,
+      },
     };
   } finally {
     if (client) await client.end();

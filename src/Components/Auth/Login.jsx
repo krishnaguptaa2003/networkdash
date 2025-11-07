@@ -2,9 +2,9 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaUser, FaLock, FaArrowRight, FaGithub, FaGoogle, FaTwitter } from 'react-icons/fa';
 import AuthFormInput from './AuthFormInput';
-import Cookies from 'js-cookie'; // 1. IMPORT js-cookie
+import Cookies from 'js-cookie';
 
-// --- 2. HELPER FUNCTIONS FOR TWITTER (PKCE) ---
+// --- HELPER FUNCTIONS FOR TWITTER (PKCE) ---
 // Creates a secure random string
 const generateRandomString = (length) => {
   const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -37,7 +37,7 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  // --- 3. UPDATED LOGIN HANDLER ---
+  // --- UPDATED LOGIN HANDLER ---
   const handleSocialLogin = async (provider) => {
     let authUrl;
 
@@ -75,7 +75,6 @@ const Login = () => {
   };
   
   const handleSubmit = async (e) => {
-    // ... (Your existing email/password login code is perfect)
     e.preventDefault();
     setIsLoading(true);
     try {
@@ -90,6 +89,14 @@ const Login = () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Login failed');
+
+      // Check for verification
+      if (data.user && !data.user.is_verified) {
+        // Pass email to verify page
+        navigate('/verify-email', { state: { email: data.user.email, fromLogin: true } });
+        return; // Stop the login
+      }
+
       localStorage.setItem('token', data.token);
       localStorage.setItem('user', JSON.stringify(data.user));
       navigate('/dashboard');
@@ -107,13 +114,11 @@ const Login = () => {
           <div className="p-1 bg-gradient-to-r from-indigo-500 to-purple-600"></div>
 
           <div className="px-6 py-6 sm:px-8 sm:py-6">
-            {/* ... (Your existing header) ... */}
             <div className="text-center mb-6">
               <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Welcome to Scrpcy</h2>
               <p className="text-gray-500 mt-1 text-sm sm:text-base">Sign in to access your data</p>
             </div>
 
-            {/* ... (Your existing email/password form) ... */}
             <form onSubmit={handleSubmit} className="space-y-4">
               <AuthFormInput
                 id="login-email"
@@ -187,7 +192,6 @@ const Login = () => {
                 </div>
               </div>
 
-              {/* --- 4. UPDATED BUTTONS --- */}
               <div className="mt-5 grid grid-cols-3 gap-3">
                 <button
                   type="button"
@@ -232,4 +236,3 @@ const Login = () => {
 };
 
 export default Login;
-

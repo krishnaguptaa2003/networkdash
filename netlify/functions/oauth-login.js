@@ -1,5 +1,4 @@
 /* eslint-disable no-undef */
-const crypto = require('crypto');
 
 // This function just builds the correct URL and redirects the user
 exports.handler = async (event) => {
@@ -21,21 +20,30 @@ exports.handler = async (event) => {
     authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${process.env.GOOGLE_CLIENT_ID}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&prompt=select_account`;
   
   } else if (provider === 'github') {
-    
-    // --- THIS IS THE FIX ---
-    // It's a space ' ' not a comma ','
-    const scope = 'read:user user:email';
-    // --- END OF FIX ---
-
+    // This is the fixed version with a space, not a comma
+    const scope = 'read:user user:email'; 
     authUrl = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&redirect_uri=${redirectUri}&scope=${scope}`;
   
   } else if (provider === 'twitter') {
-    // Twitter is much more complex (PKCE flow)
-    // We will build this in the next step.
-    return {
-      statusCode: 302,
-      headers: { Location: `${process.env.FRONTEND_URL}/login?error=twitter_not_implemented` },
-    };
+    // We get these from the frontend query string
+    const { state, code_challenge, code_challenge_method } =
+      event.queryStringParameters;
+
+    // --- THIS IS PROBLEM #1 ---
+    // This scope is missing 'email.read'
+    const scope = 'users.read tweet.read offline.access'; 
+
+    const params = new URLSearchParams({
+      client_id: process.env.TWITTER_CLIENT_ID,
+      redirect_uri: redirectUri,
+      scope: scope,
+      response_type: 'code',
+      state: state,
+      code_challenge: code_challenge,
+      code_challenge_method: code_challenge_method,
+    });
+    authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  
   } else {
     return {
       statusCode: 400,
@@ -51,4 +59,3 @@ exports.handler = async (event) => {
     },
   };
 };
-
