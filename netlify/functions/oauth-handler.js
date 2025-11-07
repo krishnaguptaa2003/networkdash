@@ -1,4 +1,3 @@
-
 /* eslint-disable no-undef */
 const { getClient } = require('./db');
 const jwt = require('jsonwebtoken');
@@ -61,7 +60,7 @@ async function getGitHubToken(code, redirectUri) {
     client_id: process.env.GITHUB_CLIENT_ID,
     client_secret: process.env.GITHUB_CLIENT_SECRET,
     code,
-    redirect_uri: redirectUri // This was correctly in your updated file
+    redirect_uri: redirectUri
   };
 
   const response = await fetch(url, {
@@ -153,9 +152,9 @@ async function getTwitterToken(code, redirectUri, codeVerifier) {
 
 async function getTwitterProfile(accessToken) {
   console.log('Getting Twitter profile...');
-  // We add `email` to the main query now, as it's a top-level field
   const userFields = ['id', 'name', 'username', 'profile_image_url'].join(',');
-  const url = `https://api.twitter.com/2/users/me?user.fields=${userFields}&email=email`;
+  // We add `email` as a top-level query parameter, not inside user.fields
+  const url = `https://api.twitter.com/2/users/me?user.fields=${userFields}&expansions=pinned_user_id&user.fields=email`;
   
   const response = await fetch(url, {
     headers: {
@@ -171,7 +170,6 @@ async function getTwitterProfile(accessToken) {
   
   const profileData = await response.json();
   console.log('Twitter profile data:', profileData);
-  // The response will look like: { data: { id, name, ... }, email: "user@email.com" }
   return profileData;
 }
 
@@ -204,16 +202,18 @@ async function findOrCreateUser(client, email, name, isVerified = false, provide
 }
 
 const getFrontendUrl = (event, rootUrl) => {
-  // ... (This function is correct, no changes needed)
   console.log('Detecting frontend URL...');
   console.log('Root URL:', rootUrl);
   console.log('FRONTEND_URL env:', process.env.FRONTEND_URL);
+  
   if (process.env.FRONTEND_URL) {
     console.log('Using FRONTEND_URL from env:', process.env.FRONTEND_URL);
     return process.env.FRONTEND_URL;
   }
+  
   const requestOrigin = event.headers.origin || event.headers.referer;
   console.log('Request origin:', requestOrigin);
+  
   if (requestOrigin) {
     try {
       const url = new URL(requestOrigin);
@@ -226,10 +226,12 @@ const getFrontendUrl = (event, rootUrl) => {
       console.log('Could not parse origin:', requestOrigin);
     }
   }
+  
   if (rootUrl.includes('localhost') || rootUrl.includes('127.0.0.1')) {
     console.log('Using default localhost frontend URL');
     return 'http://localhost:5173';
   }
+  
   const netlifyUrl = rootUrl.replace(/\.netlify\.app.*$/, '.netlify.app');
   console.log('Using Netlify frontend URL:', netlifyUrl);
   return netlifyUrl;
@@ -239,20 +241,8 @@ exports.handler = async (event) => {
   console.log('=== OAUTH HANDLER STARTED ===');
   console.log('HTTP Method:', event.httpMethod);
   console.log('Query Parameters:', event.queryStringParameters);
-
-  // *** FIX FOR PARSING provider?error=invalid_scope ***
-  // We need to parse the provider from the path, not the query
-  let provider;
-  if (event.queryStringParameters.provider) {
-    provider = event.queryStringParameters.provider;
-  } else {
-    console.error('Provider is missing from query parameters!');
-    // This is a fallback, but the real issue is the query string itself
-    // Let's check the raw path
-    if (event.path.includes('provider=twitter')) provider = 'twitter';
-    if (event.path.includes('provider=github')) provider = 'github';
-    if (event.path.includes('provider=google')) provider = 'google';
-  }
+  
+  let provider = event.queryStringParameters.provider;
   // This handles the `provider=twitter?error=...` case
   if (provider && provider.includes('?')) {
     provider = provider.split('?')[0];
@@ -263,7 +253,6 @@ exports.handler = async (event) => {
   const rootUrl = process.env.URL || 'http://localhost:8888';
   
   const frontendUrl = getFrontendUrl(event, rootUrl);
-  // Use the *cleaned* provider
   const redirectUri = `${rootUrl}/.netlify/functions/oauth-handler?provider=${provider}`;
   
   console.log('OAuth Handler Configuration:', {
@@ -283,7 +272,6 @@ exports.handler = async (event) => {
     };
   }
 
-  // This is the check that was failing
   if (!code) {
     console.error('Missing authorization code. This is likely due to a scope error or user cancellation.');
     return {
@@ -300,7 +288,6 @@ exports.handler = async (event) => {
     console.log('Database connected successfully');
 
     if (provider === 'google') {
-      // ... (Google logic is correct, no changes)
       console.log('Processing Google OAuth...');
       const tokenData = await getGoogleToken(code, redirectUri);
       console.log('Google token received');
@@ -315,21 +302,24 @@ exports.handler = async (event) => {
       );
       
     } else if (provider === 'github') {
-      // ... (GitHub logic is correct, no changes)
       console.log('Processing GitHub OAuth...');
       const tokenData = await getGitHubToken(code, redirectUri);
       console.log('GitHub token received');
+      
       const [profile, emails] = await Promise.all([
         getGitHubProfile(tokenData.access_token),
         getGitHubEmails(tokenData.access_token)
       ]);
+      
       console.log('GitHub profile received:', { login: profile.login, name: profile.name });
       console.log('GitHub emails received:', emails);
+      
       const primaryEmail = emails.find(e => e.primary && e.verified);
       if (!primaryEmail) {
         console.error('No verified primary email found on GitHub');
-        throw new Error('No verified primary email found on GitHub.');
+        throw new Error('No verified primary email found on GitHub. Please ensure your GitHub account has a verified primary email address.');
       }
+
       user = await findOrCreateUser(
         client,
         primaryEmail.email,
@@ -356,23 +346,19 @@ exports.handler = async (event) => {
       const tokenData = await getTwitterToken(code, redirectUri, codeVerifier);
       console.log('Twitter token received');
       
-      // 4. Get profile (NOW INCLUDES EMAIL)
       const profileData = await getTwitterProfile(tokenData.access_token);
-      const profile = profileData.data; // This is { id, name, username, ... }
+      const profile = profileData.data;
       
       if (!profile) {
         throw new Error('No profile data received from Twitter');
       }
 
-      // *** THIS IS THE FIX ***
-      // Get email from the top-level object
-      const userEmail = profileData.email;
+      const userEmail = profile.email; // Get email from the correct field
       const name = profile.name || profile.username;
-      // *** END OF FIX ***
 
       if (!userEmail) {
         console.error('Twitter profile data did not include email:', profileData);
-        throw new Error('Twitter did not provide an email address. Make sure the app has the "email.read" scope.');
+       throw new Error('Twitter did not provide an email address. Make sure the app has the "email.read" scope.');
       }
       
       console.log('Twitter profile received:', { 
@@ -386,12 +372,12 @@ exports.handler = async (event) => {
         client,
         userEmail,
         name,
-        true, // If we get the email, we can consider it "verified" by Twitter
-      'twitter'
+        true, 
+        'twitter'
       );
       
     } else {
-      throw new Error(`Unsupported provider: ${provider}`);
+      throw new Error(`Unsupported provider: ${provider}`);
     }
 
     // --- COMMON SUCCESS ---
@@ -404,22 +390,27 @@ exports.handler = async (event) => {
     );
     
     const { password_hash, ...userWithoutPassword } = user;
-    const userJson = JSON.stringify(userWithoutPassword);
+    const userJson = JSON.stringify(userWithoutPassword);
     
     const callbackUrl = `${frontendUrl}/auth/callback?token=${token}&user=${encodeURIComponent(userJson)}`;
     
     console.log('Redirecting to callback URL:', callbackUrl);
 
+    // *** THIS IS THE FIX FOR THE "Set-Cookie" ERROR ***
     return {
       statusCode: 302,
       headers: {
         Location: callbackUrl,
+      },
+      // Use multiValueHeaders to correctly send multiple cookies
+      multiValueHeaders: {
         'Set-Cookie': [
           'twitter_code_verifier=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax',
           'twitter_state=; Max-Age=0; Path=/; HttpOnly; SameSite=Lax'
-     ],
-      },
+        ]
+      }
     };
+    // *** END OF FIX ***
 
   } catch (error) {
     console.error('OAuth Error Details:', {
