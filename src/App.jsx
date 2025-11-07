@@ -1,3 +1,6 @@
+// D:\Github\networkdash\src\App.jsx
+// **** THIS IS THE UPDATED FILE ****
+
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom';
 import Login from './Components/Auth/Login';
 import Signup from './Components/Auth/Signup';
@@ -7,7 +10,6 @@ import ResetPassword from './Components/Auth/ResetPassword';
 import AuthCallback from './Components/Auth/AuthCallback';
 import Dashboard from './Components/Pages/Dashboard';
 import ProtectedRoute from './Components/ProtectedRoute';
-import PublicRoute from './Components/PublicRoute'; // Make sure this import is correct
 
 // This is the auth layout wrapper
 const AuthLayout = ({ children }) => (
@@ -20,43 +22,23 @@ const AuthLayout = ({ children }) => (
 const router = createBrowserRouter([
   {
     path: "/login",
-    element: (
-      <PublicRoute>
-        <AuthLayout><Login /></AuthLayout>
-      </PublicRoute>
-    ),
+    element: <AuthLayout><Login /></AuthLayout>,
   },
   {
     path: "/signup",
-    element: (
-      <PublicRoute>
-        <AuthLayout><Signup /></AuthLayout>
-      </PublicRoute>
-    ),
+    element: <AuthLayout><Signup /></AuthLayout>,
   },
   {
     path: "/verify-email",
-    element: (
-      <PublicRoute>
-        <AuthLayout><VerifyEmail /></AuthLayout>
-      </PublicRoute>
-    ),
+    element: <AuthLayout><VerifyEmail /></AuthLayout>,
   },
   {
     path: "/forgot-password",
-    element: (
-      <PublicRoute>
-        <AuthLayout><ForgotPassword /></AuthLayout>
-      </PublicRoute>
-    ),
+    element: <AuthLayout><ForgotPassword /></AuthLayout>,
   },
   {
     path: "/reset-password",
-    element: (
-      <PublicRoute>
-        <AuthLayout><ResetPassword /></AuthLayout>
-      </PublicRoute>
-    ),
+    element: <AuthLayout><ResetPassword /></AuthLayout>,
   },
   {
     path: "/auth/callback",
