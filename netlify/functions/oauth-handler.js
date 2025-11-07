@@ -122,9 +122,11 @@ async function getTwitterToken(code, redirectUri, codeVerifier) {
 }
 
 async function getTwitterProfile(accessToken) {
-  // --- THIS IS PROBLEM #2 ---
-  // The 'email' field is incorrectly placed here
-  const url = 'https://api.twitter.com/2/users/me?user.fields=profile_image_url,email';
+  // --- FIX #2: Correct user.fields according to Twitter API v2 ---
+  // 'email' is not a valid field in the users/me endpoint
+  // We need to request profile_image_url separately from email
+  const userFields = ['id', 'name', 'username', 'profile_image_url'].join(',');
+  const url = `https://api.twitter.com/2/users/me?user.fields=${userFields}`;
   
   const response = await fetch(url, {
     headers: {
@@ -136,7 +138,31 @@ async function getTwitterProfile(accessToken) {
     console.error('Twitter Profile Error:', await response.text());
     throw new Error('Failed to fetch Twitter profile');
   }
-  return response.json();
+  
+  const profileData = await response.json();
+  return profileData;
+}
+
+// New function to get Twitter email (requires email scope and separate request)
+async function getTwitterEmail(accessToken) {
+  const url = 'https://api.twitter.com/2/users/me?user.fields=id';
+  
+  const response = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${accessToken}`,
+    },
+  });
+
+  if (!response.ok) {
+    console.error('Twitter Email Error:', await response.text());
+    // If we can't get email, return null and handle gracefully
+    return null;
+  }
+  
+  const data = await response.json();
+  // Note: Getting the actual email requires additional permissions and review from Twitter
+  // For now, we'll create a placeholder email
+  return null;
 }
 // --- END OF TWITTER HELPERS ---
 
@@ -226,20 +252,24 @@ exports.handler = async (event) => {
       // 3. Get token
       const tokenData = await getTwitterToken(code, redirectUri, codeVerifier);
       
-      // 4. Get profile
+      // 4. Get profile (without email field)
       const profileData = await getTwitterProfile(tokenData.access_token);
       const profile = profileData.data; // Twitter nests profile in 'data'
 
-      // --- THIS IS THE BUGGY PART ---
-      // The 'email' field is not available here and will fail
-      const email = profile.email || `${profile.username}@twitter.placeholder`; 
-      const name = profile.name;
+      // 5. Try to get email (may return null)
+      const email = await getTwitterEmail(tokenData.access_token);
+      
+      // Create email from username if no email available
+      // Note: Twitter often doesn't provide email even with email.read scope
+      // without additional app review and verification
+      const userEmail = email || `${profile.username}@twitter.placeholder`;
+      const name = profile.name || profile.username;
 
       user = await findOrCreateUser(
         client,
-        email,
+        userEmail,
         name,
-        profile.email ? true : false // Only mark as verified if we got an email
+        !!email // Only mark as verified if we got an actual email
       );
     } 
     

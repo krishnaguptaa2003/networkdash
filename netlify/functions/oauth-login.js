@@ -29,9 +29,8 @@ exports.handler = async (event) => {
     const { state, code_challenge, code_challenge_method } =
       event.queryStringParameters;
 
-    // --- THIS IS PROBLEM #1 ---
-    // This scope is missing 'email.read'
-    const scope = 'users.read tweet.read offline.access'; 
+    // --- FIX #1: Added 'email.read' scope for Twitter ---
+    const scope = 'users.read tweet.read offline.access email.read'; 
 
     const params = new URLSearchParams({
       client_id: process.env.TWITTER_CLIENT_ID,
