@@ -144,8 +144,9 @@ async function getTwitterToken(code, redirectUri, codeVerifier) {
 
 async function getTwitterProfile(accessToken) {
   console.log('Getting Twitter profile...');
-  // Add 'email' to the list of user fields
-  const userFields = 'id,name,username,profile_image_url,email';
+  // --- THIS IS THE FIX ---
+  // We remove 'email' from the user fields.
+  const userFields = 'id,name,username,profile_image_url';
   const url = `https://api.twitter.com/2/users/me?user.fields=${userFields}`;
   
   const response = await fetch(url, {
@@ -159,7 +160,7 @@ async function getTwitterProfile(accessToken) {
   }
   const profileData = await response.json();
   console.log('Twitter profile data:', profileData);
-  // The response will be: { data: { id, name, username, email, ... } }
+  // The response will now only be: { data: { id, name, username, ... } }
   return profileData;
 }
 // --- END OF TWITTER HELPERS ---
@@ -189,9 +190,8 @@ async function findOrCreateUser(client, email, name, isVerified = false, provide
 }
 
 const getFrontendUrl = (event, rootUrl) => {
+  // This function is clean and correct
   console.log('Detecting frontend URL...');
-  console.log('Root URL:', rootUrl);
-  console.log('FRONTEND_URL env:', process.env.FRONTEND_URL);
   if (process.env.FRONTEND_URL) {
     console.log('Using FRONTEND_URL from env:', process.env.FRONTEND_URL);
     return process.env.FRONTEND_URL;
@@ -273,6 +273,7 @@ exports.handler = async (event) => {
     console.log('Database connected successfully');
 
     if (provider === 'google') {
+      // This is working, no changes
       console.log('Processing Google OAuth...');
       const tokenData = await getGoogleToken(code, redirectUri);
       const profile = await getGoogleProfile(tokenData.access_token);
@@ -284,6 +285,7 @@ exports.handler = async (event) => {
         'google'
       );
     } else if (provider === 'github') {
+      // This is working, no changes
       console.log('Processing GitHub OAuth...');
       const tokenData = await getGitHubToken(code, redirectUri);
       const [profile, emails] = await Promise.all([
@@ -318,20 +320,17 @@ exports.handler = async (event) => {
         throw new Error('No profile data received from Twitter');
       }
       
-      // Twitter API v2 puts email inside the 'data' object
-      const userEmail = profile.email; 
+      // --- THIS IS THE FIX ---
+      // We create a placeholder email because we can't get the real one
+      const userEmail = `${profile.username}@twitter.user`; 
       const name = profile.name || profile.username;
 
-      if (!userEmail) {
-        console.error('Twitter profile data did not include email:', profileData);
-        throw new Error('Twitter did not provide an email address. Make sure the app has "Request email from users" enabled.');
-      }
-      console.log('Twitter profile received:', { ...profile, email: userEmail });
+      console.log('Twitter profile received (no email):', { ...profile });
       user = await findOrCreateUser(
         client,
-        userEmail,
+        userEmail, // Use the placeholder email
         name,
-        true,
+        false, // Mark as not verified since we don't have a real email
         'twitter'
       );
 
