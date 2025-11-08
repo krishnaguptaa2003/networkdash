@@ -1,5 +1,5 @@
 /* eslint-disable no-undef */
-const { getClient } = require('./db'); // Uses the same 'pg' client as your other functions
+const { getClient } = require('./db'); // Uses the correct 'pg' client
 const jwt = require('jsonwebtoken');
 
 // Helper function for consistent JSON responses
@@ -30,6 +30,7 @@ exports.handler = async (event) => {
     client = await getClient();
 
     if (event.httpMethod === 'GET') {
+      // Use PostgreSQL syntax ($1)
       const { rows: devices } = await client.query(
         'SELECT * FROM devices WHERE user_id = $1',
         [userId]
@@ -38,6 +39,7 @@ exports.handler = async (event) => {
     } 
     else if (event.httpMethod === 'POST') {
       const { plant, department, ip_address } = JSON.parse(event.body);
+      // Use PostgreSQL syntax ($1, $2, ...)
       const { rows } = await client.query(
         'INSERT INTO devices (plant, department, ip_address, user_id) VALUES ($1, $2, $3, $4) RETURNING id',
         [plant, department, ip_address, userId]
@@ -66,7 +68,7 @@ exports.handler = async (event) => {
   } catch (error) {
     console.error('Device function error:', error);
     return jsonResponse(500, { error: 'Internal server error' });
-  } finally {
+s } finally {
     if (client) {
       await client.end();
     }
