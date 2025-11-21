@@ -1,7 +1,22 @@
+import { useState } from 'react';
 import { FaGithub, FaTwitter, FaLinkedin } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
 
 const Footer = () => {
   const currentYear = new Date().getFullYear();
+  const [email, setEmail] = useState('');
+  const [message, setMessage] = useState('');
+
+  const handleSubscribe = (e) => {
+    e.preventDefault();
+    // In a real app, you'd send this to a backend.
+    // For now, we just show a success message.
+    if (email) {
+      setMessage(`Thank you for subscribing, ${email}!`);
+      setEmail('');
+      setTimeout(() => setMessage(''), 5000); // Clear message after 5 seconds
+    }
+  };
 
   return (
     <footer className="bg-gradient-to-r from-indigo-800 to-indigo-600 text-white">
@@ -16,13 +31,18 @@ const Footer = () => {
               Comprehensive network monitoring and management solution for your infrastructure.
             </p>
             <div className="flex space-x-4">
-              <a href="#" className="text-indigo-200 hover:text-white transition-colors">
+              <a
+                href="https://github.com/krishnaguptaa2003/networkdash"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-indigo-200 hover:text-white transition-colors"
+              >
                 <FaGithub className="h-5 w-5" />
               </a>
-              <a href="#" className="text-indigo-200 hover:text-white transition-colors">
+              <a href="#" className="text-indigo-200 hover:text-white transition-colors" title="Coming Soon">
                 <FaTwitter className="h-5 w-5" />
               </a>
-              <a href="#" className="text-indigo-200 hover:text-white transition-colors">
+              <a href="#" className="text-indigo-200 hover:text-white transition-colors" title="Coming Soon">
                 <FaLinkedin className="h-5 w-5" />
               </a>
             </div>
@@ -35,9 +55,15 @@ const Footer = () => {
                 Resources
               </h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-indigo-200 hover:text-white transition-colors">Documentation</a></li>
-                <li><a href="#" className="text-sm text-indigo-200 hover:text-white transition-colors">API Reference</a></li>
-                <li><a href="#" className="text-sm text-indigo-200 hover:text-white transition-colors">Tutorials</a></li>
+                <li>
+                  <Link to="/documentation" className="text-sm text-indigo-200 hover:text-white transition-colors">Documentation</Link>
+                </li>
+                <li>
+                  <Link to="/api-reference" className="text-sm text-indigo-200 hover:text-white transition-colors">API Reference</Link>
+                </li>
+                <li>
+                  <Link to="/tutorials" className="text-sm text-indigo-200 hover:text-white transition-colors">Tutorials</Link>
+                </li>
               </ul>
             </div>
             <div>
@@ -45,9 +71,15 @@ const Footer = () => {
                 Legal
               </h4>
               <ul className="space-y-2">
-                <li><a href="#" className="text-sm text-indigo-200 hover:text-white transition-colors">Privacy Policy</a></li>
-                <li><a href="#" className="text-sm text-indigo-200 hover:text-white transition-colors">Terms of Service</a></li>
-                <li><a href="#" className="text-sm text-indigo-200 hover:text-white transition-colors">Cookie Policy</a></li>
+                <li>
+                  <Link to="/privacy-policy" className="text-sm text-indigo-200 hover:text-white transition-colors">Privacy Policy</Link>
+                </li>
+                <li>
+                  <Link to="/terms-of-service" className="text-sm text-indigo-200 hover:text-white transition-colors">Terms of Service</Link>
+                </li>
+                <li>
+                  <Link to="/cookie-policy" className="text-sm text-indigo-200 hover:text-white transition-colors">Cookie Policy</Link>
+                </li>
               </ul>
             </div>
           </div>
@@ -57,11 +89,14 @@ const Footer = () => {
             <h4 className="text-sm font-semibold text-white uppercase tracking-wider mb-4">
               Subscribe to our newsletter
             </h4>
-            <form className="flex flex-col space-y-3">
+            <form onSubmit={handleSubscribe} className="flex flex-col space-y-3">
               <input
                 type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="Your email address"
-                className="px-4 py-2 rounded-md bg-indigo-700/50 border border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm placeholder-indigo-300"
+                required
+                className="px-4 py-2 rounded-md bg-indigo-700/50 border border-indigo-600 focus:outline-none focus:ring-2 focus:ring-indigo-400 text-sm placeholder-indigo-300 text-white"
               />
               <button
                 type="submit"
@@ -70,6 +105,9 @@ const Footer = () => {
                 Subscribe
               </button>
             </form>
+            {message && (
+              <p className="text-sm text-green-300 mt-2">{message}</p>
+            )}
           </div>
         </div>
 

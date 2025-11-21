@@ -15,7 +15,7 @@ const Profile = () => {
   };
 
   return (
-    <div className="mx-auto xl:max-w-[calc(100%-200px)] py-4 md:py-6">
+    <div className="mx-auto max-w-[calc(100%-80px)] xl:max-w-[calc(100%-200px)] py-4 md:py-6">
       {/* Profile Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 md:gap-6 mb-6 md:mb-8">
         <div className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-indigo-100 flex items-center justify-center">
